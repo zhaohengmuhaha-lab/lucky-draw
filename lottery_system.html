@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幸运大转盘抽奖系统</title>
+    <style>
+        /* 基础重置 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* 顶部说明区 */
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #909399;
+            font-size: 14px;
+            max-width: 600px;
+            line-height: 1.5;
+        }
+
+        /* 主体布局 */
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 800px;
+            gap: 30px;
+        }
+
+        /* 转盘展示区 */
+        .wheel-wrapper {
+            position: relative;
+            width: 300px; /* 移动端默认 */
+            height: 300px;
+            flex-shrink: 0;
+        }
+
+        .wheel {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 1px solid #000;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0s; /* JS控制 */
+        }
+
+        .wheel svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg); /* 让0度在正上方，方便计算 */
+        }
+
+        .pointer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            /* 
+               Content是0x0，Border-bottom向下延伸20px。
+               我们要让底边（Base）位于中心。
+               所以Top应该在 Center - 20px 的位置。
+            */
+            transform: translate(-50%, -20px); 
+            width: 0;
+            height: 0;
+            border-left: 7.5px solid transparent;
+            border-right: 7.5px solid transparent;
+            border-bottom: 20px solid #FF3333;
+            z-index: 10;
+        }
+        
+        /* 指针的黑色描边效果 */
+        .pointer::after {
+            content: '';
+            position: absolute;
+            top: 1px; 
+            left: -8.5px;
+            width: 0;
+            height: 0;
+            border-left: 8.5px solid transparent;
+            border-right: 8.5px solid transparent;
+            border-bottom: 22px solid #000;
+            z-index: -1;
+        }
+
+        /* 自定义设置区 */
+        .settings-area {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            padding: 20px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            position: relative;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-group label {
+            font-size: 14px;
+            font-weight: bold;
+            color: #606266;
+        }
+
+        .input-group input {
+            padding: 10px;
+            border: 1px solid #DCDFE6;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        
+        .prize-input {
+            flex: 1;
+        }
+        
+        .rate-input-item {
+            width: 80px;
+        }
+
+        .input-group input:focus {
+            border-color: #409EFF;
+        }
+
+        .input-group input.error {
+            border-color: #F56C6C;
+        }
+
+        .error-msg {
+            color: #F56C6C;
+            font-size: 12px;
+            height: 16px; /* 占位防止抖动 */
+            visibility: hidden;
+        }
+
+        .error-msg.visible {
+            visibility: visible;
+        }
+
+        /* 输入框布局容器 */
+        .inputs-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* 操作按钮区 */
+        .action-area {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+
+        #start-btn {
+            width: 100%;
+            height: 40px;
+            background-color: #409EFF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        #start-btn:hover {
+            background-color: #66B1FF;
+        }
+
+        #start-btn:disabled {
+            background-color: #C0C4CC;
+            cursor: not-allowed;
+        }
+
+        /* 弹窗样式 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .modal-overlay.active {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .modal {
+            background: white;
+            width: 280px;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .modal-content {
+            font-size: 14px;
+            color: #606266;
+        }
+
+        .modal-btn {
+            width: 100%;
+            height: 36px;
+            background-color: #409EFF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .modal-btn:hover {
+            background-color: #66B1FF;
+        }
+
+        /* 响应式适配 */
+        @media (min-width: 768px) {
+            .wheel-wrapper {
+                width: 400px;
+                height: 400px;
+            }
+
+            .main-container {
+                gap: 40px;
+            }
+            
+            /* PC端布局调整：转盘在上，设置区在下 */
+            /* 实际上PRD要求: 设置区/按钮区在转盘下方水平居中 */
+            
+            .settings-area {
+                width: 100%;
+                max-width: 640px; /* 适配两列输入框 */
+            }
+
+            .inputs-container {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+            }
+
+            /* 让第5个奖品输入框居中 */
+            .input-group:nth-child(5) {
+                grid-column: 1 / -1;
+                width: 50%;
+                justify-self: center;
+            }
+            
+            /* 成功率输入框也单独一行居中? PRD未明确，但通常放最后比较好 */
+            .input-group.rate-group {
+                grid-column: 1 / -1;
+                width: 50%;
+                justify-self: center;
+            }
+
+            #start-btn {
+                width: 180px;
+            }
+        }
+
+        @media (max-width: 767px) {
+            .wheel-wrapper {
+                /* 移动端自适应80%，最小200，最大400 */
+                width: 80vw;
+                height: 80vw;
+                min-width: 200px;
+                min-height: 200px;
+                max-width: 400px;
+                max-height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部说明区 -->
+    <div class="header">
+        使用说明：1. 填写 5 个奖品名称及对应中奖概率；2. 概率总和不可超过 100%；3. 点击开始抽奖
+    </div>
+
+    <div class="main-container">
+        <!-- 转盘展示区 -->
+        <div class="wheel-wrapper">
+            <div class="pointer"></div> <!-- 中心指针 -->
+            <div class="wheel" id="wheel">
+                <svg viewBox="0 0 100 100" id="wheel-svg">
+                    <!-- SVG内容将由JS动态生成 -->
+                </svg>
+            </div>
+        </div>
+
+        <!-- 自定义设置区 -->
+        <div class="settings-area">
+            <div class="inputs-container">
+                <!-- 5个奖品输入框 -->
+                <div class="input-group">
+                    <label>奖品 1</label>
+                    <div class="input-row">
+                        <input type="text" class="prize-input" placeholder="奖品名称" maxlength="10">
+                        <input type="number" class="rate-input-item" placeholder="概率%" min="0" max="100">
+                    </div>
+                    <span class="error-msg">请填写该奖品名称</span>
+                </div>
+                <div class="input-group">
+                    <label>奖品 2</label>
+                    <div class="input-row">
+                        <input type="text" class="prize-input" placeholder="奖品名称" maxlength="10">
+                        <input type="number" class="rate-input-item" placeholder="概率%" min="0" max="100">
+                    </div>
+                    <span class="error-msg">请填写该奖品名称</span>
+                </div>
+                <div class="input-group">
+                    <label>奖品 3</label>
+                    <div class="input-row">
+                        <input type="text" class="prize-input" placeholder="奖品名称" maxlength="10">
+                        <input type="number" class="rate-input-item" placeholder="概率%" min="0" max="100">
+                    </div>
+                    <span class="error-msg">请填写该奖品名称</span>
+                </div>
+                <div class="input-group">
+                    <label>奖品 4</label>
+                    <div class="input-row">
+                        <input type="text" class="prize-input" placeholder="奖品名称" maxlength="10">
+                        <input type="number" class="rate-input-item" placeholder="概率%" min="0" max="100">
+                    </div>
+                    <span class="error-msg">请填写该奖品名称</span>
+                </div>
+                <div class="input-group">
+                    <label>奖品 5</label>
+                    <div class="input-row">
+                        <input type="text" class="prize-input" placeholder="奖品名称" maxlength="10">
+                        <input type="number" class="rate-input-item" placeholder="概率%" min="0" max="100">
+                    </div>
+                    <span class="error-msg">请填写该奖品名称</span>
+                </div>
+                
+                <!-- 总概率提示 -->
+                <div class="input-group" style="grid-column: 1 / -1; align-items: center;">
+                    <span id="total-rate-msg" style="font-size: 14px; color: #606266;">当前总概率：0%</span>
+                </div>
+            </div>
+
+            <!-- 操作按钮区 -->
+            <div class="action-area">
+                <button id="start-btn">开始抽奖</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal">
+            <div class="modal-title" id="modal-title">恭喜中奖！</div>
+            <div class="modal-content" id="modal-content">你抽中了：【iPhone 15】</div>
+            <button class="modal-btn" onclick="closeModal()">确定</button>
+        </div>
+    </div>
+
+    <!-- 提示框（用于全局提示，如点击开始时的校验失败） -->
+    <div class="modal-overlay" id="alert-overlay">
+        <div class="modal">
+            <div class="modal-title">提示</div>
+            <div class="modal-content" id="alert-content">请填写所有信息</div>
+            <button class="modal-btn" onclick="closeAlert()">确定</button>
+        </div>
+    </div>
+
+    <script>
+        // === 配置与状态 ===
+        const COLORS = ['#E8F4FD', '#E8F8E8', '#FFF9E8', '#FDE8F4', '#F5E8FD']; 
+        const SECTORS_COUNT = 5;
+        let prizes = [
+            { name: '', rate: 0 },
+            { name: '', rate: 0 },
+            { name: '', rate: 0 },
+            { name: '', rate: 0 },
+            { name: '', rate: 0 }
+        ];
+        let isSpinning = false;
+        let currentRotation = 0; 
+
+        // === DOM 元素 ===
+        const wheelSvg = document.getElementById('wheel-svg');
+        const wheelEl = document.getElementById('wheel');
+        const prizeInputs = document.querySelectorAll('.prize-input');
+        const rateInputs = document.querySelectorAll('.rate-input-item');
+        const totalRateMsg = document.getElementById('total-rate-msg');
+        const startBtn = document.getElementById('start-btn');
+        
+        // === 初始化 ===
+        function init() {
+            drawWheel();
+            bindEvents();
+        }
+
+        // === 绘制转盘 (SVG) ===
+        function drawWheel() {
+            wheelSvg.innerHTML = ''; 
+            const radius = 50; 
+            const cx = 50;
+            const cy = 50;
+            const anglePerSector = 360 / SECTORS_COUNT;
+
+            for (let i = 0; i < SECTORS_COUNT; i++) {
+                const startAngle = i * anglePerSector;
+                const endAngle = (i + 1) * anglePerSector;
+                
+                const x1 = cx + radius * Math.cos(startAngle * Math.PI / 180);
+                const y1 = cy + radius * Math.sin(startAngle * Math.PI / 180);
+                const x2 = cx + radius * Math.cos(endAngle * Math.PI / 180);
+                const y2 = cy + radius * Math.sin(endAngle * Math.PI / 180);
+
+                const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 0 1 ${x2} ${y2} Z`;
+
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                path.setAttribute("d", pathData);
+                path.setAttribute("fill", COLORS[i]);
+                path.setAttribute("stroke", "#000"); 
+                path.setAttribute("stroke-width", "0.2"); 
+                wheelSvg.appendChild(path);
+
+                // 绘制文字
+                const textAngle = startAngle + anglePerSector / 2;
+                const textRadius = 32; 
+                const tx = cx + textRadius * Math.cos(textAngle * Math.PI / 180);
+                const ty = cy + textRadius * Math.sin(textAngle * Math.PI / 180);
+
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", tx);
+                text.setAttribute("y", ty);
+                text.setAttribute("fill", "#333");
+                text.setAttribute("font-size", "4"); 
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("dominant-baseline", "middle");
+                text.setAttribute("transform", `rotate(${textAngle}, ${tx}, ${ty})`);
+                
+                let content = prizes[i].name || `奖品 ${i + 1}`;
+                
+                let lines = [];
+                if (content.length <= 5) {
+                    lines.push(content);
+                } else if (content.length <= 10) {
+                    lines.push(content.slice(0, 5));
+                    lines.push(content.slice(5));
+                } else {
+                    lines.push(content.slice(0, 5));
+                    lines.push(content.slice(5, 9) + '...');
+                }
+
+                if (lines.length === 1) {
+                    text.textContent = lines[0];
+                } else {
+                    const tspan1 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                    tspan1.textContent = lines[0];
+                    tspan1.setAttribute("x", tx);
+                    tspan1.setAttribute("dy", "-1.5"); 
+                    
+                    const tspan2 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                    tspan2.textContent = lines[1];
+                    tspan2.setAttribute("x", tx);
+                    tspan2.setAttribute("dy", "3.5"); 
+                    
+                    text.appendChild(tspan1);
+                    text.appendChild(tspan2);
+                }
+
+                wheelSvg.appendChild(text);
+            }
+        }
+
+        // === 事件绑定 ===
+        function bindEvents() {
+            // 奖品名称输入
+            prizeInputs.forEach((input, index) => {
+                input.addEventListener('input', (e) => {
+                    prizes[index].name = e.target.value.trim();
+                    drawWheel();
+                    validatePrizeInput(input);
+                });
+
+                input.addEventListener('blur', () => {
+                    validatePrizeInput(input);
+                });
+            });
+
+            // 概率输入
+            rateInputs.forEach((input, index) => {
+                input.addEventListener('input', (e) => {
+                    let val = e.target.value;
+                    // 限制只能输入整数
+                    if (val && !/^\d+$/.test(val)) {
+                        val = val.replace(/[^\d]/g, '');
+                        input.value = val;
+                    }
+                    
+                    const num = parseInt(val, 10) || 0;
+                    prizes[index].rate = num;
+                    
+                    validateTotalRate();
+                });
+            });
+
+            startBtn.addEventListener('click', startLottery);
+        }
+
+        // === 校验逻辑 ===
+        function validatePrizeInput(input) {
+            const val = input.value.trim();
+            // 找到父级 .input-group，然后找 .error-msg
+            // 结构: .input-group -> .input-row -> input
+            const group = input.closest('.input-group');
+            const errorSpan = group.querySelector('.error-msg');
+            
+            if (!val) {
+                input.classList.add('error');
+                errorSpan.classList.add('visible');
+                return false;
+            } else {
+                input.classList.remove('error');
+                errorSpan.classList.remove('visible');
+                return true;
+            }
+        }
+
+        function validateTotalRate() {
+            let total = 0;
+            let isValid = true;
+
+            rateInputs.forEach((input, idx) => {
+                const val = parseInt(input.value, 10);
+                if (isNaN(val)) {
+                    // 空值允许暂存，但在抽奖时会拦截，这里只算总和
+                } else {
+                    total += val;
+                    if (val < 0 || val > 100) {
+                        input.classList.add('error');
+                        isValid = false;
+                    } else {
+                        input.classList.remove('error');
+                    }
+                }
+            });
+
+            totalRateMsg.textContent = `当前总概率：${total}%`;
+            
+            if (total > 100) {
+                totalRateMsg.style.color = '#F56C6C';
+                return false;
+            } else {
+                totalRateMsg.style.color = '#606266';
+                return true;
+            }
+        }
+
+        // === 抽奖核心逻辑 ===
+        function startLottery() {
+            if (isSpinning) return;
+
+            // 1. 校验奖品名
+            let allPrizesValid = true;
+            prizeInputs.forEach(input => {
+                if (!validatePrizeInput(input)) allPrizesValid = false;
+            });
+
+            if (!allPrizesValid) {
+                showAlert("请填写所有 5 个奖品名称，不可留空！");
+                return;
+            }
+
+            // 2. 校验概率
+            let totalRate = 0;
+            let ratesValid = true;
+            for (let i = 0; i < SECTORS_COUNT; i++) {
+                const val = prizes[i].rate;
+                if (val < 0 || val > 100) {
+                    ratesValid = false;
+                    rateInputs[i].classList.add('error');
+                }
+                totalRate += val;
+            }
+
+            if (!ratesValid) {
+                showAlert("单个奖品概率必须在 0-100 之间！");
+                return;
+            }
+            
+            if (totalRate > 100) {
+                showAlert("总概率不能超过 100%！");
+                return;
+            }
+
+            // 3. 锁定并开始
+            isSpinning = true;
+            startBtn.disabled = true;
+            startBtn.textContent = "抽奖中...";
+
+            // 4. 判定结果
+            // 生成随机数 R (0-99)
+            const R = Math.floor(Math.random() * 100);
+            
+            let currentSum = 0;
+            let winningIndex = -1;
+            
+            // 权重判定逻辑
+            for (let i = 0; i < SECTORS_COUNT; i++) {
+                if (R >= currentSum && R < currentSum + prizes[i].rate) {
+                    winningIndex = i;
+                    break;
+                }
+                currentSum += prizes[i].rate;
+            }
+            
+            const isSuccess = (winningIndex !== -1);
+            
+            // 如果未中奖，随机选一个作为视觉落点（但结果弹窗报失败）
+            // 如果中奖，视觉落点必须是 winningIndex
+            const targetIndex = isSuccess ? winningIndex : Math.floor(Math.random() * SECTORS_COUNT);
+
+            // 5. 执行动画
+            spinWheel(targetIndex, isSuccess, winningIndex); // 传入 winningIndex 方便显示名字
+        }
+
+        // === 转盘动画逻辑 ===
+        function spinWheel(targetIndex, isSuccess, actualWinningIndex) {
+            const sectorAngle = 360 / SECTORS_COUNT;
+            const sectorCenter = targetIndex * sectorAngle + sectorAngle / 2;
+            let targetRotationBase = 360 - sectorCenter;
+            
+            const minLaps = 10; 
+            let targetRotation = currentRotation + (minLaps * 360);
+            
+            const remainder = targetRotation % 360;
+            const adjustment = targetRotationBase - remainder;
+            targetRotation += adjustment;
+            if (targetRotation <= currentRotation) {
+                targetRotation += 360;
+            }
+            
+            const totalDistance = targetRotation - currentRotation;
+            const startTime = performance.now();
+            const duration = 4000; 
+            
+            function animate(now) {
+                const elapsed = now - startTime;
+                if (elapsed >= duration) {
+                    currentRotation = targetRotation;
+                    wheelEl.style.transform = `rotate(${currentRotation}deg)`;
+                    isSpinning = false;
+                    startBtn.disabled = false;
+                    startBtn.textContent = "开始抽奖";
+                    showResult(isSuccess, isSuccess ? actualWinningIndex : targetIndex);
+                    return;
+                }
+
+                const t = elapsed / duration;
+                const ease = 1 - Math.pow(1 - t, 3);
+                
+                const currentAngle = currentRotation + totalDistance * ease;
+                wheelEl.style.transform = `rotate(${currentAngle}deg)`;
+                
+                requestAnimationFrame(animate);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // === 结果展示 ===
+        function showResult(isSuccess, index) {
+            const prizeName = prizes[index].name || `奖品 ${index+1}`;
+            
+            if (isSuccess) {
+                document.getElementById('modal-title').textContent = "恭喜中奖！";
+                document.getElementById('modal-content').textContent = `你抽中了：【${prizeName}】`;
+            } else {
+                document.getElementById('modal-title').textContent = "抽奖失败";
+                document.getElementById('modal-content').textContent = "很遗憾，本次未抽中奖品～";
+            }
+            
+            document.getElementById('modal-overlay').classList.add('active');
+        }
+
+        // === 弹窗控制 ===
+        function closeModal() {
+            document.getElementById('modal-overlay').classList.remove('active');
+        }
+
+        function showAlert(msg) {
+            document.getElementById('alert-content').textContent = msg;
+            document.getElementById('alert-overlay').classList.add('active');
+        }
+
+        function closeAlert() {
+            document.getElementById('alert-overlay').classList.remove('active');
+        }
+
+        // 启动
+        init();
+
+        // 附加说明：如何修改转盘尺寸 / 颜色 / 转动时长
+        /*
+         * === 自定义指南 ===
+         * 1. 修改转盘尺寸：
+         *    在 <style> 标签中找到 .wheel-wrapper，修改 width 和 height。
+         *    移动端在 @media (max-width: 767px) 中修改。
+         *
+         * 2. 修改颜色：
+         *    在 <script> 标签顶部的 COLORS 数组中修改 5 个分区的颜色代码。
+         *
+         * 3. 修改转动时长：
+         *    在 spinWheel 函数中修改 duration 变量 (当前为 4000，即 4秒)。
+         */
+    </script>
+</body>
+</html>
